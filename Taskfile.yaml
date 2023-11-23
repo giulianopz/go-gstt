@@ -1,0 +1,9 @@
+version: '3'
+
+
+dotenv: ['.env']
+
+tasks:
+  run:
+    cmds:
+      - go run main.go -f ./flac/output_000.flac -i=true -k $KEY -o=json
