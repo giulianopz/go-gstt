@@ -4,6 +4,10 @@ version: '3'
 dotenv: ['.env']
 
 tasks:
-  run:
+  filecap:
     cmds:
-      - go run main.go -f ./flac/output_000.flac -i=true -k $KEY -o=json
+      - go run main.go -i -c -k $KEY -o=json -f {{.CLI_ARGS}}
+  
+  livecap:
+    cmds:
+      - gst-launch-1.0 -v pulsesrc ! audioconvert ! audioresample ! audio/x-raw,channels=1,rate=16000 ! filesink location=/dev/stdout | go run ./main.go -k $KEY -o json -i=true

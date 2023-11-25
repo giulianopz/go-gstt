@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"io"
-	"log"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -61,60 +60,50 @@ how to use it.
 */
 
 const (
-	downEndpoint = "https://www.google.com/speech-api/full-duplex/v1/down"
-	upEndpoint   = "https://www.google.com/speech-api/full-duplex/v1/up"
+	serviceURL = "https://www.google.com/speech-api/full-duplex/v1"
 )
 
 func main() {
+
+	var (
+		wg     sync.WaitGroup
+		pair   = generatePair()
+		client = &http.Client{Transport: &http3.RoundTripper{}}
+	)
 
 	//verbose := flag.Bool("v", false, "verbose")
 	filePath := flag.String("f", "", "path of audio file to trascript")
 	apiKey := flag.String("k", "", "api key built into chromium")
 	output := flag.String("o", "", "output")
 	language := flag.String("l", "null", "language")
+	continuous := flag.Bool("c", false, "continuous")
 	interim := flag.Bool("i", false, "interim")
 	maxAlts := flag.String("max-alts", "1", "max alternatives")
 	pFilter := flag.String("pfilter", "2", "pFilter")
-
 	flag.Parse()
 
-	hclient := &http.Client{
-		Transport: &http3.RoundTripper{},
-	}
-
-	pair := generatePair()
-
-	values := url.Values{}
-	values.Add("app", "chromium")
-	values.Add("app", "continuous")
-	if interim != nil && *interim {
-		values.Add("app", "interim")
-	}
-	values.Add("maxAlternatives", *maxAlts)
-	values.Add("pFilter", *pFilter)
-	values.Add("lang", *language)
-	values.Add("key", *apiKey)
-	values.Add("pair", pair)
-	values.Add("output", *output)
-
-	var wg sync.WaitGroup
+	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(*continuous, *interim, *maxAlts, *pFilter, *language, *apiKey, pair, *output))
+	downURL := encode(mustParse(serviceURL+"/down"), downQueryParams(*apiKey, pair, *output))
 
 	wg.Add(1)
-	go func(addr string) {
+	go func() {
+		defer wg.Done()
 
 		if filePath != nil && *filePath != "" {
 			f, err := goflac.ParseFile(*filePath)
 			if err != nil {
-				log.Fatal(err)
+				slog.Error("cannot parse file", "err", err)
+				os.Exit(1)
 			}
 			data, err := f.GetStreamInfo()
 			if err != nil {
-				log.Fatal(err)
+				slog.Error("cannot get file info", "err", err)
+				os.Exit(1)
 			}
 
-			slog.Info("sample rate", slog.Attr{})
+			slog.Info("UP", "sample rate", data.SampleRate)
 
-			send(hclient, addr, data.SampleRate, f.Marshal())
+			send(client, upURL, data.SampleRate, f.Marshal())
 		} else {
 
 			// https://raw.githubusercontent.com/GoogleCloudPlatform/golang-samples/afa8430cf3ba1094b823aa17c94d9effb78b79d4/speech/livecaption/livecaption.go
@@ -124,33 +113,65 @@ func main() {
 			for {
 				n, err := os.Stdin.Read(buf)
 				if n > 0 {
-					log.Printf("Pipe mic input to WebSpeechAPI")
-					send(hclient, addr, 16000, buf)
+					send(client, upURL, 16000, buf)
 				} else if err == io.EOF {
-					log.Printf("Done reading from stdin")
+					slog.Info("Done reading from stdin")
 					break
 				} else if err != nil {
-					log.Printf("Could not read from stdin: %v", err)
+					slog.Error("Could not read from stdin", "err", err)
 					continue
 				}
 			}
-
 		}
-		wg.Done()
-	}(upEndpoint + "?" + values.Encode())
-
-	values = url.Values{}
-	values.Add("key", *apiKey)
-	values.Add("pair", pair)
-	values.Add("output", *output)
+	}()
 
 	wg.Add(1)
-	go func(addr string) {
-		recv(hclient, addr)
-		wg.Done()
-	}(downEndpoint + "?" + values.Encode())
+	go func() {
+		defer wg.Done()
+
+		recv(client, downURL)
+	}()
 
 	wg.Wait()
+}
+
+func mustParse(s string) *url.URL {
+	ret, err := url.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+func upQueryParams(continuous, interim bool, maxAlts, pFilter, language, apiKey, pair, output string) url.Values {
+	values := url.Values{}
+	values.Add("app", "chromium")
+	if interim {
+		values.Add("interim", "")
+	}
+	if continuous {
+		values.Add("continuous", "")
+	}
+	values.Add("maxAlternatives", maxAlts)
+	values.Add("pFilter", pFilter)
+	values.Add("lang", language)
+	values.Add("key", apiKey)
+	values.Add("pair", pair)
+	values.Add("output", output)
+	return values
+}
+
+func downQueryParams(apiKey, pair, output string) url.Values {
+	values := url.Values{}
+	values.Add("key", apiKey)
+	values.Add("pair", pair)
+	values.Add("output", output)
+	return values
+}
+
+func encode(base *url.URL, queryParams url.Values) string {
+	base.RawQuery = queryParams.Encode()
+	return base.String()
 }
 
 func generatePair() string {
@@ -162,13 +183,27 @@ func generatePair() string {
 	return ret
 }
 
-func recv(hclient *http.Client, addr string) {
-	rsp, err := hclient.Get(addr)
+func recv(c *http.Client, addr string) {
+	req, err := http.NewRequest(http.MethodGet, addr, nil)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	slog.Info("DOWN", "response", rsp)
+	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+
+	rsp, err := c.Do(req)
+	if err != nil {
+		slog.Error("DOWN", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("DOWN", "rsp", rsp)
 	defer rsp.Body.Close()
+
+	/* 	bs := &bytes.Buffer{}
+	   	_, err = io.Copy(bs, rsp.Body)
+	   	if err != nil {
+	   		panic(err)
+	   	}
+	   	slog.Info("DOWN", "result", bs) */
 
 	dec := json.NewDecoder(rsp.Body)
 	for {
@@ -183,24 +218,50 @@ func recv(hclient *http.Client, addr string) {
 			if err != nil {
 				panic(err)
 			}
-			log.Fatal("cannot unmarshal json", err, bs.String())
+			slog.Error("cannot unmarshal json", "err", err, "bs", bs.String())
+			os.Exit(1)
 		}
 
 		for _, res := range speechRecogResp.Result {
 			for _, alt := range res.Alternative {
-				slog.Info("got", slog.Attr{Key: "confidence", Value: slog.AnyValue(alt.Confidence)}, "transcript", alt.Transcript)
+				slog.Info("result", slog.Attr{Key: "confidence", Value: slog.AnyValue(alt.Confidence)}, "transcript", alt.Transcript)
 			}
 		}
 	}
+
 }
 
-func send(hclient *http.Client, addr string, sampleRate int, bs []byte) {
-	rsp, err := hclient.Post(addr, "audio/x-flac; rate="+strconv.Itoa(sampleRate), bytes.NewBuffer(bs))
+func send(c *http.Client, addr string, sampleRate int, bs []byte) {
+
+	req, err := http.NewRequest(http.MethodPost, addr, bytes.NewBuffer(bs))
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	slog.Info("UP", "response", rsp)
+	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
+
+	slog.Info("UP", "addr", addr)
+
+	rsp, err := c.Do(req)
+	if err != nil {
+		slog.Error("UP", "err", err, "rsp", rsp)
+		buff := &bytes.Buffer{}
+		_, err = io.Copy(buff, rsp.Body)
+		if err != nil {
+			panic(err)
+		}
+		slog.Error("UP", "err", err, "bs", buff.String())
+		os.Exit(1)
+	}
 	defer rsp.Body.Close()
+	slog.Info("UP", "rsp", rsp)
+
+	buff := &bytes.Buffer{}
+	_, err = io.Copy(buff, rsp.Body)
+	if err != nil {
+		panic(err)
+	}
+	slog.Error("UP", "err", err, "bs", buff.String())
 }
 
 type response struct {
