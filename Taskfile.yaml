@@ -6,8 +6,8 @@ dotenv: ['.env']
 tasks:
   filecap:
     cmds:
-      - go run main.go -i -c -k $KEY -o=json -f {{.CLI_ARGS}}
+      - go run . -i -c -k $KEY -o=json -f {{.CLI_ARGS}}
   
   livecap:
     cmds:
-      - gst-launch-1.0 -v pulsesrc ! audioconvert ! audioresample ! audio/x-raw,channels=1,rate=16000 ! filesink location=/dev/stdout | go run ./main.go -k $KEY -o json -i=true
+      - gst-launch-1.0 -v pulsesrc ! audioconvert ! audioresample ! audio/x-raw,channels=1,rate=16000 ! filesink location=/dev/stdout | go run . -i -c -k $KEY -o json -i=true

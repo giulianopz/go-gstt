@@ -55,13 +55,15 @@ this, believe its used to specify the type of
 audio, ie transcription, message, etc.
 https://cloud.google.com/speech-to-text/docs/reference/rest/v1/RecognitionConfig#interactiontype
 
-- xhw = hardware information - again, not sure
-how to use it.
+- xhw = hardware information - again, not sure how to use it.
 */
 
 const (
-	serviceURL = "https://www.google.com/speech-api/full-duplex/v1"
+	serviceURL        = "https://www.google.com/speech-api/full-duplex/v1"
+	liveCapSampleRate = 16000
 )
+
+var logger *slog.Logger
 
 func main() {
 
@@ -71,7 +73,7 @@ func main() {
 		client = &http.Client{Transport: &http3.RoundTripper{}}
 	)
 
-	//verbose := flag.Bool("v", false, "verbose")
+	verbose := flag.Bool("v", false, "verbose")
 	filePath := flag.String("f", "", "path of audio file to trascript")
 	apiKey := flag.String("k", "", "api key built into chromium")
 	output := flag.String("o", "", "output")
@@ -81,6 +83,13 @@ func main() {
 	maxAlts := flag.String("max-alts", "1", "max alternatives")
 	pFilter := flag.String("pfilter", "2", "pFilter")
 	flag.Parse()
+
+	th := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})
+	if *verbose {
+		logger = slog.New(newLevelHandler(slog.LevelDebug, th))
+	} else {
+		logger = slog.New(newLevelHandler(slog.LevelInfo, th))
+	}
 
 	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(*continuous, *interim, *maxAlts, *pFilter, *language, *apiKey, pair, *output))
 	downURL := encode(mustParse(serviceURL+"/down"), downQueryParams(*apiKey, pair, *output))
@@ -92,16 +101,16 @@ func main() {
 		if filePath != nil && *filePath != "" {
 			f, err := goflac.ParseFile(*filePath)
 			if err != nil {
-				slog.Error("cannot parse file", "err", err)
+				logger.Error("cannot parse file", "err", err)
 				os.Exit(1)
 			}
 			data, err := f.GetStreamInfo()
 			if err != nil {
-				slog.Error("cannot get file info", "err", err)
+				logger.Error("cannot get file info", "err", err)
 				os.Exit(1)
 			}
 
-			slog.Info("UP", "sample rate", data.SampleRate)
+			logger.Info("UP", "sample rate", data.SampleRate)
 
 			send(client, upURL, data.SampleRate, f.Marshal())
 		} else {
@@ -113,12 +122,13 @@ func main() {
 			for {
 				n, err := os.Stdin.Read(buf)
 				if n > 0 {
-					send(client, upURL, 16000, buf)
+					logger.Debug("captured from stdin", "buf", buf)
+					send(client, upURL, liveCapSampleRate, buf)
 				} else if err == io.EOF {
-					slog.Info("Done reading from stdin")
+					logger.Info("done reading from stdin")
 					break
 				} else if err != nil {
-					slog.Error("Could not read from stdin", "err", err)
+					logger.Error("could not read from stdin", "err", err)
 					continue
 				}
 			}
@@ -127,8 +137,8 @@ func main() {
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
 
+		defer wg.Done()
 		recv(client, downURL)
 	}()
 
@@ -192,10 +202,10 @@ func recv(c *http.Client, addr string) {
 
 	rsp, err := c.Do(req)
 	if err != nil {
-		slog.Error("DOWN", "err", err)
+		logger.Error("DOWN", "err", err)
 		os.Exit(1)
 	}
-	slog.Info("DOWN", "rsp", rsp)
+	logger.Info("DOWN", "rsp", rsp)
 	defer rsp.Body.Close()
 
 	/* 	bs := &bytes.Buffer{}
@@ -203,7 +213,7 @@ func recv(c *http.Client, addr string) {
 	   	if err != nil {
 	   		panic(err)
 	   	}
-	   	slog.Info("DOWN", "result", bs) */
+	   	logger.Info("DOWN", "result", bs) */
 
 	dec := json.NewDecoder(rsp.Body)
 	for {
@@ -218,13 +228,13 @@ func recv(c *http.Client, addr string) {
 			if err != nil {
 				panic(err)
 			}
-			slog.Error("cannot unmarshal json", "err", err, "bs", bs.String())
+			logger.Error("cannot unmarshal json", "err", err, "body", bs.String())
 			os.Exit(1)
 		}
 
 		for _, res := range speechRecogResp.Result {
 			for _, alt := range res.Alternative {
-				slog.Info("result", slog.Attr{Key: "confidence", Value: slog.AnyValue(alt.Confidence)}, "transcript", alt.Transcript)
+				logger.Info("result", "confidence", alt.Confidence, "transcript", alt.Transcript)
 			}
 		}
 	}
@@ -240,28 +250,26 @@ func send(c *http.Client, addr string, sampleRate int, bs []byte) {
 	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
 
-	slog.Info("UP", "addr", addr)
-
 	rsp, err := c.Do(req)
 	if err != nil {
-		slog.Error("UP", "err", err, "rsp", rsp)
+		logger.Error("UP", "err", err, "rsp", rsp)
 		buff := &bytes.Buffer{}
 		_, err = io.Copy(buff, rsp.Body)
 		if err != nil {
 			panic(err)
 		}
-		slog.Error("UP", "err", err, "bs", buff.String())
+		logger.Error("UP", "err", err, "body", buff.String())
 		os.Exit(1)
 	}
 	defer rsp.Body.Close()
-	slog.Info("UP", "rsp", rsp)
+	logger.Info("UP", "rsp", rsp)
 
 	buff := &bytes.Buffer{}
 	_, err = io.Copy(buff, rsp.Body)
 	if err != nil {
 		panic(err)
 	}
-	slog.Error("UP", "err", err, "bs", buff.String())
+	logger.Info("UP", "body", buff.String())
 }
 
 type response struct {
