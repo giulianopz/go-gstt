@@ -60,89 +60,112 @@ https://cloud.google.com/speech-to-text/docs/reference/rest/v1/RecognitionConfig
 
 const (
 	serviceURL        = "https://www.google.com/speech-api/full-duplex/v1"
-	liveCapSampleRate = 16000
+	defaultSampleRate = 16000
 )
 
-var logger *slog.Logger
+var (
+	logger          *slog.Logger
+	defautlLogLevel = slog.LevelInfo
+)
+
+var (
+	verbose    bool
+	filePath   string
+	apiKey     string
+	output     string
+	language   string
+	continuous bool
+	interim    bool
+	maxAlts    string
+	pFilter    string
+)
 
 func main() {
 
 	var (
 		wg     sync.WaitGroup
-		pair   = generatePair()
 		client = &http.Client{Transport: &http3.RoundTripper{}}
 	)
 
-	verbose := flag.Bool("v", false, "verbose")
-	filePath := flag.String("f", "", "path of audio file to trascript")
-	apiKey := flag.String("k", "", "api key built into chromium")
-	output := flag.String("o", "", "output")
-	language := flag.String("l", "null", "language")
-	continuous := flag.Bool("c", false, "continuous")
-	interim := flag.Bool("i", false, "interim")
-	maxAlts := flag.String("max-alts", "1", "max alternatives")
-	pFilter := flag.String("pfilter", "2", "pFilter")
+	flag.BoolVar(&verbose, "v", false, "verbose")
+	flag.StringVar(&filePath, "f", "", "path of audio file to trascript")
+	flag.StringVar(&apiKey, "k", "", "api key built into chromium")
+	flag.StringVar(&output, "o", "", "output")
+	flag.StringVar(&language, "l", "null", "language")
+	flag.BoolVar(&continuous, "c", false, "continuous")
+	flag.BoolVar(&interim, "i", false, "interim")
+	flag.StringVar(&maxAlts, "max-alts", "1", "max alternatives")
+	flag.StringVar(&pFilter, "pfilter", "2", "pFilter")
 	flag.Parse()
 
 	th := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})
-	if *verbose {
-		logger = slog.New(newLevelHandler(slog.LevelDebug, th))
-	} else {
-		logger = slog.New(newLevelHandler(slog.LevelInfo, th))
+	if verbose {
+		defautlLogLevel = slog.LevelDebug
 	}
+	logger = slog.New(newLevelHandler(defautlLogLevel, th))
 
-	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(*continuous, *interim, *maxAlts, *pFilter, *language, *apiKey, pair, *output))
-	downURL := encode(mustParse(serviceURL+"/down"), downQueryParams(*apiKey, pair, *output))
+	if filePath == "" {
+		// TODO read from mic input until silence is detected
+		buf := make([]byte, 1024)
+		for {
+			n, err := os.Stdin.Read(buf)
+			if n > 0 {
+				logger.Debug("read from stdin", "buf", buf)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+				pair := generatePair()
 
-		if filePath != nil && *filePath != "" {
-			f, err := goflac.ParseFile(*filePath)
-			if err != nil {
-				logger.Error("cannot parse file", "err", err)
-				os.Exit(1)
-			}
-			data, err := f.GetStreamInfo()
-			if err != nil {
-				logger.Error("cannot get file info", "err", err)
-				os.Exit(1)
-			}
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					send(client, pair, defaultSampleRate, buf[:n])
+				}()
 
-			logger.Info("UP", "sample rate", data.SampleRate)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					recv(client, pair)
+				}()
 
-			send(client, upURL, data.SampleRate, f.Marshal())
-		} else {
-
-			// https://raw.githubusercontent.com/GoogleCloudPlatform/golang-samples/afa8430cf3ba1094b823aa17c94d9effb78b79d4/speech/livecaption/livecaption.go
-			// gst-launch-1.0 -v pulsesrc ! audioconvert ! audioresample ! audio/x-raw,channels=1,rate=16000 ! filesink location=/dev/stdout | go run .
-			// FIX read from mic input until silence is detected
-			buf := make([]byte, 1024)
-			for {
-				n, err := os.Stdin.Read(buf)
-				if n > 0 {
-					logger.Debug("captured from stdin", "buf", buf)
-					send(client, upURL, liveCapSampleRate, buf)
-				} else if err == io.EOF {
-					logger.Info("done reading from stdin")
-					break
-				} else if err != nil {
-					logger.Error("could not read from stdin", "err", err)
-					continue
-				}
+			} else if err == io.EOF {
+				logger.Info("done reading from stdin")
+				break
+			} else if err != nil {
+				logger.Error("could not read from stdin", "err", err)
+				continue
 			}
 		}
-	}()
+		wg.Wait()
+	} else {
 
-	wg.Add(1)
-	go func() {
+		f, err := goflac.ParseFile(filePath)
+		if err != nil {
+			logger.Error("cannot parse file", "err", err)
+			os.Exit(1)
+		}
+		data, err := f.GetStreamInfo()
+		if err != nil {
+			logger.Error("cannot get file info", "err", err)
+			os.Exit(1)
+		}
+		logger.Info("done parsing file", "sample rate", data.SampleRate)
 
-		defer wg.Done()
-		recv(client, downURL)
-	}()
+		pair := generatePair()
 
-	wg.Wait()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			send(client, pair, data.SampleRate, f.Marshal())
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recv(client, pair)
+		}()
+
+		wg.Wait()
+	}
+
 }
 
 func mustParse(s string) *url.URL {
@@ -153,7 +176,7 @@ func mustParse(s string) *url.URL {
 	return ret
 }
 
-func upQueryParams(continuous, interim bool, maxAlts, pFilter, language, apiKey, pair, output string) url.Values {
+func upQueryParams(pair string) url.Values {
 	values := url.Values{}
 	values.Add("app", "chromium")
 	if interim {
@@ -171,7 +194,7 @@ func upQueryParams(continuous, interim bool, maxAlts, pFilter, language, apiKey,
 	return values
 }
 
-func downQueryParams(apiKey, pair, output string) url.Values {
+func downQueryParams(pair string) url.Values {
 	values := url.Values{}
 	values.Add("key", apiKey)
 	values.Add("pair", pair)
@@ -193,11 +216,13 @@ func generatePair() string {
 	return ret
 }
 
-func recv(c *http.Client, addr string) {
-	req, err := http.NewRequest(http.MethodGet, addr, nil)
+func recv(c *http.Client, pair string) {
+	downURL := encode(mustParse(serviceURL+"/down"), downQueryParams(pair))
+	req, err := http.NewRequest(http.MethodGet, downURL, nil)
 	if err != nil {
 		panic(err)
 	}
+	// spoofing
 	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 
 	rsp, err := c.Do(req)
@@ -213,7 +238,7 @@ func recv(c *http.Client, addr string) {
 	   	if err != nil {
 	   		panic(err)
 	   	}
-	   	logger.Info("DOWN", "result", bs) */
+	   	logger.Debug("DOWN", "result", bs) */
 
 	dec := json.NewDecoder(rsp.Body)
 	for {
@@ -241,9 +266,9 @@ func recv(c *http.Client, addr string) {
 
 }
 
-func send(c *http.Client, addr string, sampleRate int, bs []byte) {
-
-	req, err := http.NewRequest(http.MethodPost, addr, bytes.NewBuffer(bs))
+func send(c *http.Client, pair string, sampleRate int, bs []byte) {
+	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(pair))
+	req, err := http.NewRequest(http.MethodPost, upURL, bytes.NewBuffer(bs))
 	if err != nil {
 		panic(err)
 	}
@@ -253,23 +278,25 @@ func send(c *http.Client, addr string, sampleRate int, bs []byte) {
 	rsp, err := c.Do(req)
 	if err != nil {
 		logger.Error("UP", "err", err, "rsp", rsp)
-		buff := &bytes.Buffer{}
-		_, err = io.Copy(buff, rsp.Body)
-		if err != nil {
-			panic(err)
+		if rsp != nil {
+			buff := &bytes.Buffer{}
+			_, err = io.Copy(buff, rsp.Body)
+			if err != nil {
+				panic(err)
+			}
+			logger.Error("UP", "err", err, "body", buff.String())
 		}
-		logger.Error("UP", "err", err, "body", buff.String())
 		os.Exit(1)
 	}
 	defer rsp.Body.Close()
-	logger.Info("UP", "rsp", rsp)
+	logger.Debug("UP", "rsp", rsp)
 
 	buff := &bytes.Buffer{}
 	_, err = io.Copy(buff, rsp.Body)
 	if err != nil {
 		panic(err)
 	}
-	logger.Info("UP", "body", buff.String())
+	logger.Debug("UP", "body", buff.String())
 }
 
 type response struct {
