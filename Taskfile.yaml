@@ -10,4 +10,9 @@ tasks:
   
   livecap:
     cmds:
-      - gst-launch-1.0 -v pulsesrc ! audioconvert ! audioresample ! audio/x-raw,channels=1,rate=16000 ! filesink location=/dev/stdout | go run . -i -c -k $KEY -o json -i=true
+      - rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% trim 0 15 | go run . -v -i -c -k $KEY -o json -i=true
+
+  rec:
+    cmds:
+      - rec --encoding signed-integer --bits 16 --channels 1 --rate 16000 {{.CLI_ARGS}}.flac silence 1 0.1 1% -1 0.5 1%
+
