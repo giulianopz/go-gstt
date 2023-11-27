@@ -105,40 +105,34 @@ func main() {
 
 	if filePath == "" {
 
-		q := make(chan *bytes.Buffer)
+		bs := make([]byte, 1024)
 
+		// POST HTTP streaming
+		pr, pw := io.Pipe()
 		go func() {
-			for buf := range q {
-				process(defaultSampleRate, buf)
-			}
+			defer pr.Close()
+			defer pw.Close()
+
+			process(defaultSampleRate, pr)
 		}()
 
-		buff := &bytes.Buffer{}
-		bs := make([]byte, 1024)
 		for {
 			n, err := os.Stdin.Read(bs)
 			if n > 0 {
 				logger.Debug("read from stdin", "bs", bs)
 
-				_, err = buff.Write(bs)
+				_, err := pw.Write(bs)
 				if err != nil {
 					panic(err)
 				}
-
-				if buff.Len() >= 1024*500 { // ~500kB
-					q <- buff
-					buff = &bytes.Buffer{}
-				}
-
 			} else if err == io.EOF {
 				logger.Info("done reading from stdin")
 				break
 			} else if err != nil {
 				logger.Error("could not read from stdin", "err", err)
-				continue
+				os.Exit(1)
 			}
 		}
-		close(q)
 	} else {
 
 		f, err := goflac.ParseFile(filePath)
@@ -157,13 +151,13 @@ func main() {
 	}
 }
 
-func process(sampleRate int, buf *bytes.Buffer) {
+func process(sampleRate int, r io.Reader) {
 	pair := generatePair()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		send(client, pair, sampleRate, bytes.NewReader(buf.Bytes()))
+		send(client, pair, sampleRate, r)
 	}()
 
 	wg.Add(1)
@@ -240,7 +234,7 @@ func recv(c *http.Client, pair string) {
 	logger.Info("DOWN", "rsp", rsp)
 	defer rsp.Body.Close()
 
-	// HTTP streaming
+	// GET HTTP streaming
 	dec := json.NewDecoder(rsp.Body)
 	for {
 		speechRecogResp := &response{}
@@ -273,7 +267,7 @@ func send(c *http.Client, pair string, sampleRate int, r io.Reader) {
 	if err != nil {
 		panic(err)
 	}
-	//TODO make user agent configurable
+	// TODO make user agent configurable
 	// spoofing
 	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
