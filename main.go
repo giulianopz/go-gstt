@@ -66,6 +66,8 @@ const (
 var (
 	logger          *slog.Logger
 	defautlLogLevel = slog.LevelInfo
+	wg              sync.WaitGroup
+	client          = &http.Client{Transport: &http3.RoundTripper{}}
 )
 
 var (
@@ -82,11 +84,6 @@ var (
 
 func main() {
 
-	var (
-		wg     sync.WaitGroup
-		client = &http.Client{Transport: &http3.RoundTripper{}}
-	)
-
 	flag.BoolVar(&verbose, "v", false, "verbose")
 	flag.StringVar(&filePath, "f", "", "path of audio file to trascript")
 	flag.StringVar(&apiKey, "k", "", "api key built into chromium")
@@ -98,33 +95,40 @@ func main() {
 	flag.StringVar(&pFilter, "pfilter", "2", "pFilter")
 	flag.Parse()
 
-	th := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})
 	if verbose {
 		defautlLogLevel = slog.LevelDebug
 	}
-	logger = slog.New(newLevelHandler(defautlLogLevel, th))
+	logger = slog.New(newLevelHandler(
+		defautlLogLevel,
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
+	))
 
 	if filePath == "" {
-		// TODO read from mic input until silence is detected
-		buf := make([]byte, 1024)
+
+		q := make(chan *bytes.Buffer)
+
+		go func() {
+			for buf := range q {
+				process(defaultSampleRate, buf)
+			}
+		}()
+
+		buff := &bytes.Buffer{}
+		bs := make([]byte, 1024)
 		for {
-			n, err := os.Stdin.Read(buf)
+			n, err := os.Stdin.Read(bs)
 			if n > 0 {
-				logger.Debug("read from stdin", "buf", buf)
+				logger.Debug("read from stdin", "bs", bs)
 
-				pair := generatePair()
+				_, err = buff.Write(bs)
+				if err != nil {
+					panic(err)
+				}
 
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					send(client, pair, defaultSampleRate, buf[:n])
-				}()
-
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					recv(client, pair)
-				}()
+				if buff.Len() >= 1024*500 { // ~500kB
+					q <- buff
+					buff = &bytes.Buffer{}
+				}
 
 			} else if err == io.EOF {
 				logger.Info("done reading from stdin")
@@ -134,7 +138,7 @@ func main() {
 				continue
 			}
 		}
-		wg.Wait()
+		close(q)
 	} else {
 
 		f, err := goflac.ParseFile(filePath)
@@ -149,23 +153,26 @@ func main() {
 		}
 		logger.Info("done parsing file", "sample rate", data.SampleRate)
 
-		pair := generatePair()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			send(client, pair, data.SampleRate, f.Marshal())
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			recv(client, pair)
-		}()
-
-		wg.Wait()
+		process(data.SampleRate, bytes.NewBuffer(f.Marshal()))
 	}
+}
 
+func process(sampleRate int, buf *bytes.Buffer) {
+	pair := generatePair()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		send(client, pair, sampleRate, bytes.NewReader(buf.Bytes()))
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		recv(client, pair)
+	}()
+
+	wg.Wait()
 }
 
 func mustParse(s string) *url.URL {
@@ -233,13 +240,7 @@ func recv(c *http.Client, pair string) {
 	logger.Info("DOWN", "rsp", rsp)
 	defer rsp.Body.Close()
 
-	/* 	bs := &bytes.Buffer{}
-	   	_, err = io.Copy(bs, rsp.Body)
-	   	if err != nil {
-	   		panic(err)
-	   	}
-	   	logger.Debug("DOWN", "result", bs) */
-
+	// HTTP streaming
 	dec := json.NewDecoder(rsp.Body)
 	for {
 		speechRecogResp := &response{}
@@ -254,7 +255,6 @@ func recv(c *http.Client, pair string) {
 				panic(err)
 			}
 			logger.Error("cannot unmarshal json", "err", err, "body", bs.String())
-			os.Exit(1)
 		}
 
 		for _, res := range speechRecogResp.Result {
@@ -266,12 +266,15 @@ func recv(c *http.Client, pair string) {
 
 }
 
-func send(c *http.Client, pair string, sampleRate int, bs []byte) {
+func send(c *http.Client, pair string, sampleRate int, r io.Reader) {
+
 	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(pair))
-	req, err := http.NewRequest(http.MethodPost, upURL, bytes.NewBuffer(bs))
+	req, err := http.NewRequest(http.MethodPost, upURL, r)
 	if err != nil {
 		panic(err)
 	}
+	//TODO make user agent configurable
+	// spoofing
 	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
 
@@ -286,7 +289,7 @@ func send(c *http.Client, pair string, sampleRate int, bs []byte) {
 			}
 			logger.Error("UP", "err", err, "body", buff.String())
 		}
-		os.Exit(1)
+		return
 	}
 	defer rsp.Body.Close()
 	logger.Debug("UP", "rsp", rsp)
