@@ -1,4 +1,4 @@
-module github.com/giulianopz/go-web-speech-api
+module github.com/giulianopz/go-gsst
 
 go 1.21.0
 
