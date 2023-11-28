@@ -11,15 +11,29 @@ The API can be called using the API key built into Chrome. To find your key, go 
 ### Usage
 
 ```bash
-git clone https://github.com/giulianopz/go-gsst
-cd go-gsst
-go build -o gsst .
-gsst -h
+$ git clone https://github.com/giulianopz/go-gsst
+$ cd go-gsst
+$ go build -o gsst .
+$ gsst -h
+Usage:
+    gstt [OPTION]... -key $KEY -output [pb|json]
+    gstt [OPTION]... -key $KEY --interim -continuous -output [pb|json]
 
+Options:
+        --verbose
+        --file, path of audio file to trascript
+        --key, api key built into chromium
+        --output, transcriptions output format ('pb' for binary or 'json' for text)
+        --language, language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag
+        --continuous, to keep the stream open and transcoding as long as there is no silence
+        --interim, to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
+        --max-alts, how many possible transcriptions do you want
+        --pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
+        --user-agent, user-agent for spoofing
 # trascribe audio from a single FLAC file
-gsst --interim --continuous --key $KEY --output json --file $FILE
+$ gsst --interim --continuous --key $KEY --output json --file $FILE
 # trascribe audio from microphone input (recorded with sox, removing silence)
-rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gsst --interim --continuous --key $KEY --output json
+$ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gsst --interim --continuous --key $KEY --output json
 ```
 
 ### Credits
