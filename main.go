@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -17,58 +18,35 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-/*
-Query parameters:
-
-- key = the API key for the service.
-
-- pFilter = profanity filter (0=off, 1=medium, 2=strict)
-
-- lang = The language of the recording /
-transcription. Use the standard webcodes for
-your language. I.e. en-US for English-US, ru for
-Russian, etc. https://en.wikipedia.org/wiki/IETF_language_tag
-
-- output = The output of the stream. Some
-values include “pb” for binary, “json” for json
-string.
-
-- pair = required for using the full-duplex stream.
-A random alphanumeric string at least 16
-characters long used in both up and down
-streams.
-
-- maxAlternatives = How many possible
-transcriptions do you want? 1 - X.
-continuous = Used in full-duplex to keep the
-stream open and transcoding as long as there is
-no silence
-
-- interim = tells chrome to send back results
-before its finished, so you get a live stream of
-possible transcriptions as it processes the audio.
-For the one_shot api there are a few other
-options
-
-- lm = Grammars to use - not sure how to use
-this, believe its used to specify the type of
-audio, ie transcription, message, etc.
-https://cloud.google.com/speech-to-text/docs/reference/rest/v1/RecognitionConfig#interactiontype
-
-- xhw = hardware information - again, not sure how to use it.
-*/
-
 const (
 	serviceURL        = "https://www.google.com/speech-api/full-duplex/v1"
+	defaultUserAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 	defaultSampleRate = 16000
 )
 
 var (
 	logger          *slog.Logger
-	defautlLogLevel = slog.LevelInfo
+	defautlLogLevel = slog.LevelWarn
 	wg              sync.WaitGroup
 	client          = &http.Client{Transport: &http3.RoundTripper{}}
 )
+
+const usage = `Usage:
+    gstt [OPTION]... -key $KEY -output [pb|json]
+    gstt [OPTION]... -key $KEY --interim -continuous -output [pb|json]
+
+Options:
+	--verbose
+	--file, path of audio file to trascript
+	--key, api key built into chromium
+	--output, transcriptions output format ('pb' for binary or 'json' for JSON messages)
+	--language, language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag
+	--continuous, to keep the stream open and transcoding as long as there is no silence
+	--interim, to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
+	--max-alts, how many possible transcriptions do you want
+	--pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
+	--user-agent, user-agent for spoofing
+`
 
 var (
 	verbose    bool
@@ -80,24 +58,28 @@ var (
 	interim    bool
 	maxAlts    string
 	pFilter    string
+	userAgent  string
 )
 
 func main() {
 
-	flag.BoolVar(&verbose, "v", false, "verbose")
-	flag.StringVar(&filePath, "f", "", "path of audio file to trascript")
-	flag.StringVar(&apiKey, "k", "", "api key built into chromium")
-	flag.StringVar(&output, "o", "", "output")
-	flag.StringVar(&language, "l", "null", "language")
-	flag.BoolVar(&continuous, "c", false, "continuous")
-	flag.BoolVar(&interim, "i", false, "interim")
-	flag.StringVar(&maxAlts, "max-alts", "1", "max alternatives")
-	flag.StringVar(&pFilter, "pfilter", "2", "pFilter")
+	flag.BoolVar(&verbose, "verbose", false, "verbose")
+	flag.StringVar(&filePath, "file", "", "path of audio file to trascript")
+	flag.StringVar(&apiKey, "key", "", "api key built into chromium")
+	flag.StringVar(&output, "output", "", "output format ('pb' for binary or 'json' for JSON messages)")
+	flag.StringVar(&language, "language", "null", "language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag")
+	flag.BoolVar(&continuous, "continuous", false, "to keep the stream open and transcoding as long as there is no silence")
+	flag.BoolVar(&interim, "interim", false, "to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio")
+	flag.StringVar(&maxAlts, "max-alts", "1", "how many possible transcriptions do you want")
+	flag.StringVar(&pFilter, "pfilter", "2", "profanity filter ('0'=off, '1'=medium, '2'=strict)")
+	flag.StringVar(&userAgent, "user-agent", defaultUserAgent, "user-agent for spoofing")
+	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
-	if verbose {
+	if !verbose {
 		defautlLogLevel = slog.LevelDebug
 	}
+
 	logger = slog.New(newLevelHandler(
 		defautlLogLevel,
 		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
@@ -223,8 +205,7 @@ func recv(c *http.Client, pair string) {
 	if err != nil {
 		panic(err)
 	}
-	// spoofing
-	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+	req.Header.Add("user-agent", defaultUserAgent)
 
 	rsp, err := c.Do(req)
 	if err != nil {
@@ -267,9 +248,8 @@ func send(c *http.Client, pair string, sampleRate int, r io.Reader) {
 	if err != nil {
 		panic(err)
 	}
-	// TODO make user agent configurable
-	// spoofing
-	req.Header.Add("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+
+	req.Header.Add("user-agent", defaultUserAgent)
 	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
 
 	rsp, err := c.Do(req)

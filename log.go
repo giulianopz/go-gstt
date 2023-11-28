@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -18,6 +19,10 @@ type levelHandler struct {
 
 func (h *levelHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level.Level()
+}
+
+func (h *levelHandler) Disable() {
+	h.l.SetOutput(io.Discard)
 }
 
 func (h *levelHandler) Handle(ctx context.Context, r slog.Record) error {
