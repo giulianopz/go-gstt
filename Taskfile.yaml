@@ -6,7 +6,7 @@ dotenv: ['.env']
 tasks:
   filecap:
     cmds:
-      - go run . --interim -continuous -key $KEY -output json --file {{.CLI_ARGS}} --user-agent pippo
+      - go run . --interim -continuous -key $KEY -output json --file {{.CLI_ARGS}}
   
   livecap:
     cmds:

@@ -86,7 +86,28 @@ func main() {
 		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
 	))
 
-	if filePath == "" {
+	if apiKey == "" {
+		logger.Error("'key' flag is mandatory")
+		os.Exit(1)
+	}
+
+	if filePath != "" {
+
+		f, err := goflac.ParseFile(filePath)
+		if err != nil {
+			logger.Error("cannot parse file", "err", err)
+			os.Exit(1)
+		}
+		data, err := f.GetStreamInfo()
+		if err != nil {
+			logger.Error("cannot get file info", "err", err)
+			os.Exit(1)
+		}
+		logger.Info("done parsing file", "sample rate", data.SampleRate)
+
+		process(data.SampleRate, bytes.NewBuffer(f.Marshal()))
+
+	} else {
 
 		bs := make([]byte, 1024)
 
@@ -116,21 +137,6 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	} else {
-
-		f, err := goflac.ParseFile(filePath)
-		if err != nil {
-			logger.Error("cannot parse file", "err", err)
-			os.Exit(1)
-		}
-		data, err := f.GetStreamInfo()
-		if err != nil {
-			logger.Error("cannot get file info", "err", err)
-			os.Exit(1)
-		}
-		logger.Info("done parsing file", "sample rate", data.SampleRate)
-
-		process(data.SampleRate, bytes.NewBuffer(f.Marshal()))
 	}
 }
 
