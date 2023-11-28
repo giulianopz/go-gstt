@@ -16,10 +16,10 @@ cd go-gsst
 go build -o gsst .
 gsst -h
 
-# trascribe a single FLAC file
-gsst --interim -continuous -key $KEY -output json --file $FILE
-# trascribe microphone input (recorded with sox removing silence)
-rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gsst --interim -continuous -key $KEY -output json
+# trascribe audio from a single FLAC file
+gsst --interim --continuous --key $KEY --output json --file $FILE
+# trascribe audio from microphone input (recorded with sox, removing silence)
+rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gsst --interim --continuous --key $KEY --output json
 ```
 
 ### Credits
