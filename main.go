@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	goflac "github.com/go-flac/go-flac"
@@ -76,7 +77,7 @@ func main() {
 	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
-	if !verbose {
+	if verbose {
 		defautlLogLevel = slog.LevelDebug
 	}
 
@@ -235,6 +236,7 @@ func recv(c *http.Client, pair string) {
 		for _, res := range speechRecogResp.Result {
 			for _, alt := range res.Alternative {
 				logger.Info("result", "confidence", alt.Confidence, "transcript", alt.Transcript)
+				fmt.Fprintf(os.Stdout, "%s\n", strings.TrimSpace(alt.Transcript))
 			}
 		}
 	}
