@@ -3,19 +3,17 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/giulianopz/go-gsst/pkg/logger"
 	"github.com/giulianopz/go-gsst/pkg/opts"
-	"github.com/giulianopz/go-gsst/pkg/str"
+	"github.com/giulianopz/go-gsst/pkg/transcription"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -32,14 +30,16 @@ func New() *client {
 	}
 }
 
-func (c *client) send(sampleRate int, body io.Reader, options *opts.Options) {
+func (c *client) send(body io.Reader, options *opts.Options) {
 	req, err := http.NewRequest(http.MethodPost, getUrl("up", options), body)
 	if err != nil {
 		panic(err)
 	}
 
-	req.Header.Add("user-agent", str.GetOrDefault(options.UserAgent, opts.DefaultUserAgent))
-	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
+	req.Header.Add("user-agent", opts.GetOrDefault(options.UserAgent, opts.DefaultUserAgent))
+	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(
+		opts.GetOrDefault(options.SampleRate, opts.DefaultSampleRate)),
+	)
 
 	rsp, err := c.Do(req)
 	if err != nil {
@@ -65,24 +65,13 @@ func (c *client) send(sampleRate int, body io.Reader, options *opts.Options) {
 	logger.Debug("UP", "body", buff.String())
 }
 
-type response struct {
-	Result []struct {
-		Alternative []struct {
-			Transcript string  `json:"transcript,omitempty"`
-			Confidence float64 `json:"confidence,omitempty"`
-		} `json:"alternative,omitempty"`
-		Final bool `json:"final,omitempty"`
-	} `json:"result,omitempty"`
-	ResultIndex int `json:"result_index,omitempty"`
-}
-
-func (c *client) recv(options *opts.Options) {
+func (c *client) recv(out chan<- *transcription.Response, options *opts.Options) {
 	req, err := http.NewRequest(http.MethodGet, getUrl("down", options), nil)
 	if err != nil {
 		panic(err)
 	}
 
-	req.Header.Add("user-agent", str.GetOrDefault(options.UserAgent, opts.DefaultUserAgent))
+	req.Header.Add("user-agent", opts.GetOrDefault(options.UserAgent, opts.DefaultUserAgent))
 
 	rsp, err := c.Do(req)
 	if err != nil {
@@ -95,9 +84,11 @@ func (c *client) recv(options *opts.Options) {
 	// stream GET response body
 	dec := json.NewDecoder(rsp.Body)
 	for {
-		speechRecogResp := &response{}
+		speechRecogResp := &transcription.Response{}
+
 		err = dec.Decode(speechRecogResp)
 		if err == io.EOF {
+			close(out)
 			break
 		}
 		if err != nil {
@@ -109,12 +100,7 @@ func (c *client) recv(options *opts.Options) {
 			logger.Error("cannot unmarshal json", "err", err, "body", bs.String())
 		}
 
-		for _, res := range speechRecogResp.Result {
-			for _, alt := range res.Alternative {
-				logger.Info("result", "confidence", alt.Confidence, "transcript", alt.Transcript)
-				fmt.Fprintf(os.Stdout, "%s\n", strings.TrimSpace(alt.Transcript))
-			}
-		}
+		out <- speechRecogResp
 	}
 }
 
@@ -171,11 +157,13 @@ func generatePair() string {
 	return ret
 }
 
-// Stream sends an audio input to Google Speesch API printing to stdout its trascripts.
-// Audio must be in FLAC codec/format. If audio is coming from microphone input, its sample rate
-// must be 16000. If a file, the sample rate must match the one declared in the file header.
-// The options control the audio transcription.
-func (c *client) Stream(audio io.Reader, sampleRate int, options *opts.Options) {
+// Transcribe sends an audio input to Google Speesch API printing to stdout its trascripts.
+// Audio must be in FLAC codec/format and can be passed via any io.Reader valid implementation.
+// If audio is coming from microphone input, its sample rate must be 16000.
+// If a file, the sample rate must match the one declared in the file header.
+// Result are received asynchronously via a channel.
+// The options control the way audio is transcribed.
+func (c *client) Transcribe(in io.Reader, out chan<- *transcription.Response, options *opts.Options) {
 
 	wg := sync.WaitGroup{}
 
@@ -184,13 +172,13 @@ func (c *client) Stream(audio io.Reader, sampleRate int, options *opts.Options) 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c.send(sampleRate, audio, options)
+		c.send(in, options)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c.recv(options)
+		c.recv(out, options)
 	}()
 
 	wg.Wait()

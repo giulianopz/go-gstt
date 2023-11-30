@@ -19,6 +19,7 @@ type Options struct {
 	PFilter    string
 	UserAgent  string
 	Pair       string
+	SampleRate int
 }
 
 type Option func(*Options)
@@ -111,4 +112,25 @@ func UserAgent(agent string) Option {
 	return func(o *Options) {
 		o.UserAgent = agent
 	}
+}
+
+// SampleRate is the sampling rate, i.e. the number of samples per second taken from a continuous signal to make a discrete or digital (default 16000)
+func SampleRate(rate int) Option {
+	return func(o *Options) {
+		o.SampleRate = rate
+	}
+}
+
+func GetOrDefault[V any](val, defaultVal V) V {
+	switch v := any(val).(type) {
+	case string:
+		if v == "" {
+			return defaultVal
+		}
+	case int:
+		if v == 0 {
+			return defaultVal
+		}
+	}
+	return val
 }

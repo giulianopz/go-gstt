@@ -8,11 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/giulianopz/go-gsst/pkg/client"
 	"github.com/giulianopz/go-gsst/pkg/logger"
 	"github.com/giulianopz/go-gsst/pkg/opts"
-	"github.com/giulianopz/go-gsst/pkg/str"
+	"github.com/giulianopz/go-gsst/pkg/transcription"
 	goflac "github.com/go-flac/go-flac"
 )
 
@@ -66,9 +67,20 @@ func main() {
 	}
 
 	var (
-		c       = client.New()
+		httpC   = client.New()
 		options = fromFlags()
+		out     = make(chan *transcription.Response)
 	)
+
+	go func() {
+		for resp := range out {
+			for _, result := range resp.Result {
+				for _, alt := range result.Alternative {
+					fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
+				}
+			}
+		}
+	}()
 
 	if filePath != "" { // transcribe from file
 
@@ -82,9 +94,10 @@ func main() {
 			logger.Error("cannot get file info", "err", err)
 			os.Exit(1)
 		}
+		options.SampleRate = data.SampleRate
 		logger.Info("done parsing file", "sample rate", data.SampleRate)
 
-		c.Stream(bytes.NewBuffer(f.Marshal()), data.SampleRate, options)
+		httpC.Transcribe(bytes.NewBuffer(f.Marshal()), out, options)
 
 	} else { // transcribe from microphone input
 
@@ -97,7 +110,9 @@ func main() {
 			defer pr.Close()
 			defer pw.Close()
 
-			c.Stream(pr, opts.DefaultSampleRate, options)
+			options.SampleRate = opts.DefaultSampleRate
+
+			httpC.Transcribe(pr, out, options)
 		}()
 
 		for {
@@ -163,7 +178,7 @@ func fromFlags() *opts.Options {
 		}
 		options = append(options, opts.ProfanityFilter(num))
 	}
-	options = append(options, opts.UserAgent(str.GetOrDefault(userAgent, opts.DefaultUserAgent)))
+	options = append(options, opts.UserAgent(opts.GetOrDefault(userAgent, opts.DefaultUserAgent)))
 
 	return opts.Apply(options...)
 }

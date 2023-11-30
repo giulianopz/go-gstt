@@ -6,18 +6,37 @@ The Google Speech API (full duplex version) are meant to offer a speech recognit
 
 The API can be called using the API key built into Chrome. To find your key, go to the [demo](https://www.google.com/intl/en/chrome/demos/speech.html) page for the Web Speech API on Chrome and capture the network traffic with the Chrome [net export](chrome://net-export/) tool. Then, inspect the logs with the [netlog viewer](https://netlog-viewer.appspot.com/#import) tool.
 
-> Disclaimer: The Google Speech API are not meant for commercial use. Also, please consider asking for a [key](https://www.chromium.org/developers/how-tos/api-keys/) reserved to developers.
+> Disclaimer: The Google Speech API is an internal API and [totally unsupported](https://lists.w3.org/Archives/Public/public-speech-api/2013Jul/0001.html). Also, please consider asking for a official [key](https://www.chromium.org/developers/how-tos/api-keys/) reserved to developers, although it comes with some limitations.
 
 ### Usage
 
 Import it as a package:
 ```go
 
-import "github.com/giulianopz/go-gsst/pkg/client"
+import (
+    "github.com/giulianopz/go-gsst/pkg/client"
+	"github.com/giulianopz/go-gsst/pkg/transcription"
+)
 
 func main() {
-	c := client.New()
-    c.Stream(audio, sampleRate, options)
+
+	var (
+		httpC   = client.New()
+		out     = make(chan *transcription.Response)
+	)
+
+    go func() {
+		for resp := range out {
+			for _, result := range resp.Result {
+				for _, alt := range result.Alternative {
+					fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
+				}
+			}
+		}
+	}()
+
+
+    httpC.Transcribe(audio, out, options)
 }
 ```
 
@@ -26,10 +45,12 @@ Use it as a command:
 $ git clone https://github.com/giulianopz/go-gsst
 $ cd go-gsst
 $ go build -o gsst .
+$ mv gsst /usr/local/bin
+# or just `go install github.com/giulianopz/go-gsst@latest`, if you don't want to rename the binary
 $ gsst -h
 Usage:
-    gstt [OPTION]... -key $KEY -output [pb|json]
-    gstt [OPTION]... -key $KEY --interim -continuous -output [pb|json]
+    gstt [OPTION]... --key $KEY --output [pb|json]
+    gstt [OPTION]... --key $KEY --interim --continuous --output [pb|json]
 
 Options:
         --verbose
@@ -52,6 +73,6 @@ $ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 
 
 As far as I know, this API has been going around since a long time, although its URL was changed a few times.  
 
-[Mike Pultz](https://mikepultz.com/2011/03/accessing-google-speech-api-chrome-11/) possibly was the first one to discover it in 2011. [Travis Payton](http://blog.travispayton.com/wp-content/uploads/2014/03/Google-Speech-API.pdf) published a detailed report on the subject subsequently.
+[Mike Pultz](https://mikepultz.com/2011/03/accessing-google-speech-api-chrome-11/) was possibly the first one to discover it in 2011. Subsequently, [Travis Payton](http://blog.travispayton.com/wp-content/uploads/2014/03/Google-Speech-API.pdf) published a detailed report on the subject.
 
 
