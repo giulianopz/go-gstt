@@ -15,25 +15,25 @@ Import it as a package:
 
 import (
     "github.com/giulianopz/go-gsst/pkg/client"
-	"github.com/giulianopz/go-gsst/pkg/transcription"
+    "github.com/giulianopz/go-gsst/pkg/transcription"
 )
 
 func main() {
 
-	var (
-		httpC   = client.New()
-		out     = make(chan *transcription.Response)
-	)
+    var (
+        httpC   = client.New()
+        out     = make(chan *transcription.Response)
+    )
 
     go func() {
-		for resp := range out {
-			for _, result := range resp.Result {
-				for _, alt := range result.Alternative {
-					fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
-				}
-			}
-		}
-	}()
+	    for resp := range out {
+            for _, result := range resp.Result {
+                for _, alt := range result.Alternative {
+                    fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
+                }
+            }
+        }
+    }()
 
 
     httpC.Transcribe(audio, out, options)
