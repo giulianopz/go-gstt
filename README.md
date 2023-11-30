@@ -71,6 +71,8 @@ $ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 
 
 ### Demo
 
+Live-caption speech redirecting speakers output to microphone input with PulseAudio Volume Control ([pavucontrol](https://www.kirsle.net/redirect-audio-out-to-mic-in-linux)): 
+
 ![livecapdemo](./assets/demo.gif)
 
 ([how-to-gif](https://gist.github.com/paulirish/b6cf161009af0708315c))
