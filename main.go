@@ -18,8 +18,8 @@ import (
 )
 
 const usage = `Usage:
-    gstt [OPTION]... -key $KEY -output [pb|json]
-    gstt [OPTION]... -key $KEY --interim -continuous -output [pb|json]
+    gstt [OPTION]... --key $KEY --output [pb|json]
+    gstt [OPTION]... --key $KEY --interim --continuous --output [pb|json]
 
 Options:
 	--verbose
