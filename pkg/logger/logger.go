@@ -1,4 +1,4 @@
-package main
+package logger
 
 import (
 	"context"
@@ -10,6 +10,25 @@ import (
 
 	"github.com/fatih/color"
 )
+
+var (
+	l               *slog.Logger
+	DefautlLogLevel = slog.LevelWarn
+)
+
+func init() {
+	l = slog.New(newLevelHandler(
+		slog.LevelWarn,
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
+	))
+}
+
+func Level(level slog.Level) {
+	l = slog.New(newLevelHandler(
+		level,
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
+	))
+}
 
 type levelHandler struct {
 	level   slog.Leveler
@@ -70,4 +89,19 @@ func newLevelHandler(level slog.Leveler, h slog.Handler) *levelHandler {
 		h = lh.Handler()
 	}
 	return &levelHandler{level, h, log.New(os.Stdout, "", 0)}
+}
+
+func Debug(msg string, args ...any) {
+	l.Debug(msg, args...)
+}
+
+func Info(msg string, args ...any) {
+	l.Info(msg, args...)
+}
+func Warn(msg string, args ...any) {
+	l.Warn(msg, args...)
+}
+
+func Error(msg string, args ...any) {
+	l.Error(msg, args...)
 }

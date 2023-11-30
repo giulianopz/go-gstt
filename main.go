@@ -2,34 +2,18 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
-	"net/http"
-	"net/url"
 	"os"
 	"strconv"
-	"strings"
-	"sync"
 
+	"github.com/giulianopz/go-gsst/pkg/client"
+	"github.com/giulianopz/go-gsst/pkg/logger"
+	"github.com/giulianopz/go-gsst/pkg/opts"
+	"github.com/giulianopz/go-gsst/pkg/str"
 	goflac "github.com/go-flac/go-flac"
-	"github.com/quic-go/quic-go/http3"
-)
-
-const (
-	serviceURL        = "https://www.google.com/speech-api/full-duplex/v1"
-	defaultUserAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-	defaultSampleRate = 16000
-)
-
-var (
-	logger          *slog.Logger
-	defautlLogLevel = slog.LevelWarn
-	wg              sync.WaitGroup
-	client          = &http.Client{Transport: &http3.RoundTripper{}}
 )
 
 const usage = `Usage:
@@ -66,32 +50,27 @@ func main() {
 
 	flag.BoolVar(&verbose, "verbose", false, "verbose")
 	flag.StringVar(&filePath, "file", "", "path of audio file to trascript")
-	flag.StringVar(&apiKey, "key", "", "api key built into chromium")
+	flag.StringVar(&apiKey, "key", "", "API key built into Chrome")
 	flag.StringVar(&output, "output", "", "output format ('pb' for binary or 'json' for text)")
-	flag.StringVar(&language, "language", "null", "language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag")
+	flag.StringVar(&language, "language", "null", "language of the recording transcription, use the standard codes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag")
 	flag.BoolVar(&continuous, "continuous", false, "to keep the stream open and transcoding as long as there is no silence")
 	flag.BoolVar(&interim, "interim", false, "to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio")
 	flag.StringVar(&maxAlts, "max-alts", "1", "how many possible transcriptions do you want")
 	flag.StringVar(&pFilter, "pfilter", "2", "profanity filter ('0'=off, '1'=medium, '2'=strict)")
-	flag.StringVar(&userAgent, "user-agent", defaultUserAgent, "user-agent for spoofing")
+	flag.StringVar(&userAgent, "user-agent", opts.DefaultUserAgent, "user-agent for spoofing (default 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')")
 	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
 	if verbose {
-		defautlLogLevel = slog.LevelDebug
+		logger.Level(slog.LevelDebug)
 	}
 
-	logger = slog.New(newLevelHandler(
-		defautlLogLevel,
-		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
-	))
+	var (
+		c       = client.New()
+		options = fromFlags()
+	)
 
-	if apiKey == "" {
-		logger.Error("'key' flag is missing")
-		os.Exit(1)
-	}
-
-	if filePath != "" {
+	if filePath != "" { // transcribe from file
 
 		f, err := goflac.ParseFile(filePath)
 		if err != nil {
@@ -105,19 +84,20 @@ func main() {
 		}
 		logger.Info("done parsing file", "sample rate", data.SampleRate)
 
-		process(data.SampleRate, bytes.NewBuffer(f.Marshal()))
+		c.Stream(bytes.NewBuffer(f.Marshal()), data.SampleRate, options)
 
-	} else {
+	} else { // transcribe from microphone input
 
+		// 1kB chunk size
 		bs := make([]byte, 1024)
 
-		// POST HTTP streaming
+		// stream POST request body with a pipe
 		pr, pw := io.Pipe()
 		go func() {
 			defer pr.Close()
 			defer pw.Close()
 
-			process(defaultSampleRate, pr)
+			c.Stream(pr, opts.DefaultSampleRate, options)
 		}()
 
 		for {
@@ -133,164 +113,57 @@ func main() {
 				logger.Info("done reading from stdin")
 				break
 			} else if err != nil {
-				logger.Error("could not read from stdin", "err", err)
+				logger.Error("cannot not read from stdin", "err", err)
 				os.Exit(1)
 			}
 		}
 	}
 }
 
-func process(sampleRate int, r io.Reader) {
-	pair := generatePair()
+func fromFlags() *opts.Options {
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		send(client, pair, sampleRate, r)
-	}()
+	options := make([]opts.Option, 0)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		recv(client, pair)
-	}()
-
-	wg.Wait()
-}
-
-func mustParse(s string) *url.URL {
-	ret, err := url.Parse(s)
-	if err != nil {
-		panic(err)
+	if verbose {
+		options = append(options, opts.Verbose(true))
 	}
-	return ret
-}
-
-func upQueryParams(pair string) url.Values {
-	values := url.Values{}
-	values.Add("app", "chromium")
-	if interim {
-		values.Add("interim", "")
+	if filePath != "" {
+		options = append(options, opts.FilePath(filePath))
+	}
+	if apiKey != "" {
+		options = append(options, opts.ApiKey(apiKey))
+	}
+	if output != "" {
+		if output == "json" {
+			options = append(options, opts.Output(opts.Text))
+		} else {
+			options = append(options, opts.Output(opts.Binary))
+		}
+	}
+	if language != "" {
+		options = append(options, opts.Language(language))
 	}
 	if continuous {
-		values.Add("continuous", "")
+		options = append(options, opts.Continuous(true))
 	}
-	values.Add("maxAlternatives", maxAlts)
-	values.Add("pFilter", pFilter)
-	values.Add("lang", language)
-	values.Add("key", apiKey)
-	values.Add("pair", pair)
-	values.Add("output", output)
-	return values
-}
-
-func downQueryParams(pair string) url.Values {
-	values := url.Values{}
-	values.Add("key", apiKey)
-	values.Add("pair", pair)
-	values.Add("output", output)
-	return values
-}
-
-func encode(base *url.URL, queryParams url.Values) string {
-	base.RawQuery = queryParams.Encode()
-	return base.String()
-}
-
-func generatePair() string {
-	alphabet := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	ret := ""
-	for i := 0; i < 16; i++ {
-		ret += string(alphabet[rand.Intn(len(alphabet)-1)+1])
+	if interim {
+		options = append(options, opts.Interim(true))
 	}
-	return ret
-}
-
-func recv(c *http.Client, pair string) {
-	downURL := encode(mustParse(serviceURL+"/down"), downQueryParams(pair))
-	req, err := http.NewRequest(http.MethodGet, downURL, nil)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Add("user-agent", defaultUserAgent)
-
-	rsp, err := c.Do(req)
-	if err != nil {
-		logger.Error("DOWN", "err", err)
-		os.Exit(1)
-	}
-	logger.Info("DOWN", "rsp", rsp)
-	defer rsp.Body.Close()
-
-	// GET HTTP streaming
-	dec := json.NewDecoder(rsp.Body)
-	for {
-		speechRecogResp := &response{}
-		err = dec.Decode(speechRecogResp)
-		if err == io.EOF {
-			break
-		}
+	if maxAlts != "" {
+		num, err := strconv.Atoi(maxAlts)
 		if err != nil {
-			bs := &bytes.Buffer{}
-			_, err = io.Copy(bs, rsp.Body)
-			if err != nil {
-				panic(err)
-			}
-			logger.Error("cannot unmarshal json", "err", err, "body", bs.String())
+			panic(err)
 		}
-
-		for _, res := range speechRecogResp.Result {
-			for _, alt := range res.Alternative {
-				logger.Info("result", "confidence", alt.Confidence, "transcript", alt.Transcript)
-				fmt.Fprintf(os.Stdout, "%s\n", strings.TrimSpace(alt.Transcript))
-			}
+		options = append(options, opts.MaxAlts(num))
+	}
+	if pFilter != "" {
+		num, err := strconv.Atoi(pFilter)
+		if err != nil {
+			panic(err)
 		}
+		options = append(options, opts.ProfanityFilter(num))
 	}
+	options = append(options, opts.UserAgent(str.GetOrDefault(userAgent, opts.DefaultUserAgent)))
 
-}
-
-func send(c *http.Client, pair string, sampleRate int, r io.Reader) {
-
-	upURL := encode(mustParse(serviceURL+"/up"), upQueryParams(pair))
-	req, err := http.NewRequest(http.MethodPost, upURL, r)
-	if err != nil {
-		panic(err)
-	}
-
-	req.Header.Add("user-agent", defaultUserAgent)
-	req.Header.Add("content-type", "audio/x-flac; rate="+strconv.Itoa(sampleRate))
-
-	rsp, err := c.Do(req)
-	if err != nil {
-		logger.Error("UP", "err", err, "rsp", rsp)
-		if rsp != nil {
-			buff := &bytes.Buffer{}
-			_, err = io.Copy(buff, rsp.Body)
-			if err != nil {
-				panic(err)
-			}
-			logger.Error("UP", "err", err, "body", buff.String())
-		}
-		return
-	}
-	defer rsp.Body.Close()
-	logger.Debug("UP", "rsp", rsp)
-
-	buff := &bytes.Buffer{}
-	_, err = io.Copy(buff, rsp.Body)
-	if err != nil {
-		panic(err)
-	}
-	logger.Debug("UP", "body", buff.String())
-}
-
-type response struct {
-	Result []struct {
-		Alternative []struct {
-			Transcript string  `json:"transcript,omitempty"`
-			Confidence float64 `json:"confidence,omitempty"`
-		} `json:"alternative,omitempty"`
-		Final bool `json:"final,omitempty"`
-	} `json:"result,omitempty"`
-	ResultIndex int `json:"result_index,omitempty"`
+	return opts.Apply(options...)
 }

@@ -10,6 +10,18 @@ The API can be called using the API key built into Chrome. To find your key, go 
 
 ### Usage
 
+Import it as a package:
+```go
+
+import "github.com/giulianopz/go-gsst/pkg/client"
+
+func main() {
+	c := client.New()
+    c.Stream(audio, sampleRate, options)
+}
+```
+
+Use it as a command:
 ```bash
 $ git clone https://github.com/giulianopz/go-gsst
 $ cd go-gsst
@@ -38,10 +50,8 @@ $ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 
 
 ### Credits
 
-As far as I know, this API has been going around since a long time, although its endpoint was updated and finally moved to the current one.  
+As far as I know, this API has been going around since a long time, although its URL was changed a few times.  
 
-[Mike Pultz](https://mikepultz.com/2011/03/accessing-google-speech-api-chrome-11/) possibly was the first to discover it.
-
-[Travis Payton](http://blog.travispayton.com/wp-content/uploads/2014/03/Google-Speech-API.pdf) published a detailed report on the subject.
+[Mike Pultz](https://mikepultz.com/2011/03/accessing-google-speech-api-chrome-11/) possibly was the first one to discover it in 2011. [Travis Payton](http://blog.travispayton.com/wp-content/uploads/2014/03/Google-Speech-API.pdf) published a detailed report on the subject subsequently.
 
 
