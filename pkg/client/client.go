@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/giulianopz/go-gsst/pkg/logger"
 	"github.com/giulianopz/go-gsst/pkg/opts"
@@ -148,13 +149,16 @@ func getUrl(streamDirection string, options *opts.Options) string {
 	return u.String()
 }
 
+const charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func generatePair() string {
-	alphabet := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	ret := ""
+	bs := make([]byte, 0)
 	for i := 0; i < 16; i++ {
-		ret += string(alphabet[rand.Intn(len(alphabet)-1)+1])
+		bs = append(bs, charset[seededRand.Intn(len(charset))])
 	}
-	return ret
+	return string(bs)
 }
 
 // Transcribe sends an audio input to Google Speesch API printing to stdout its trascripts.
