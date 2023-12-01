@@ -1,4 +1,4 @@
-# gsst
+# gstt
 
 A Go client to call the Google Speech API for free.
 
@@ -14,8 +14,8 @@ Import it as a package:
 ```go
 
 import (
-    "github.com/giulianopz/go-gsst/pkg/client"
-    "github.com/giulianopz/go-gsst/pkg/transcription"
+    "github.com/giulianopz/go-gstt/pkg/client"
+    "github.com/giulianopz/go-gstt/pkg/transcription"
 )
 
 func main() {
@@ -42,12 +42,12 @@ func main() {
 
 Use it as a command:
 ```bash
-$ git clone https://github.com/giulianopz/go-gsst
-$ cd go-gsst
-$ go build -o gsst .
-$ mv gsst /usr/local/bin
-# or just `go install github.com/giulianopz/go-gsst@latest`, if you don't want to rename the binary
-$ gsst -h
+$ git clone https://github.com/giulianopz/go-gstt
+$ cd go-gstt
+$ go build -o gstt .
+$ mv gstt /usr/local/bin
+# or just `go install github.com/giulianopz/go-gstt@latest`, if you don't want to rename the binary
+$ gstt -h
 Usage:
     gstt [OPTION]... --key $KEY --output [pb|json]
     gstt [OPTION]... --key $KEY --interim --continuous --output [pb|json]
@@ -64,9 +64,9 @@ Options:
         --pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
         --user-agent, user-agent for spoofing
 # trascribe audio from a single FLAC file
-$ gsst --interim --continuous --key $KEY --output json --file $FILE
+$ gstt --interim --continuous --key $KEY --output json --file $FILE
 # trascribe audio from microphone input (recorded with sox, removing silence)
-$ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gsst --interim --continuous --key $KEY --output json
+$ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gstt --interim --continuous --key $KEY --output json
 ```
 
 ### Demo

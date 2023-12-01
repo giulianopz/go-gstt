@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giulianopz/go-gsst/pkg/logger"
-	"github.com/giulianopz/go-gsst/pkg/opts"
-	"github.com/giulianopz/go-gsst/pkg/transcription"
+	"github.com/giulianopz/go-gstt/pkg/logger"
+	"github.com/giulianopz/go-gstt/pkg/opts"
+	"github.com/giulianopz/go-gstt/pkg/transcription"
 	"github.com/quic-go/quic-go/http3"
 )
 

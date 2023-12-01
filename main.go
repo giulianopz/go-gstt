@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giulianopz/go-gsst/pkg/client"
-	"github.com/giulianopz/go-gsst/pkg/logger"
-	"github.com/giulianopz/go-gsst/pkg/opts"
-	"github.com/giulianopz/go-gsst/pkg/transcription"
+	"github.com/giulianopz/go-gstt/pkg/client"
+	"github.com/giulianopz/go-gstt/pkg/logger"
+	"github.com/giulianopz/go-gstt/pkg/opts"
+	"github.com/giulianopz/go-gstt/pkg/transcription"
 	goflac "github.com/go-flac/go-flac"
 )
 

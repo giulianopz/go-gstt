@@ -1,4 +1,4 @@
-module github.com/giulianopz/go-gsst
+module github.com/giulianopz/go-gstt
 
 go 1.21.0
 
