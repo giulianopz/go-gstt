@@ -86,36 +86,36 @@ func main() {
 		options.SampleRate = data.SampleRate
 		logger.Info("done parsing file", "sample rate", data.SampleRate)
 
-		httpC.Transcribe(bytes.NewBuffer(f.Marshal()), out, options)
-
+		go httpC.Transcribe(bytes.NewBuffer(f.Marshal()), out, options)
 	} else { // transcribe from microphone input
 
 		pr, pw := io.Pipe()
-		go func() {
-			defer pr.Close()
-			defer pw.Close()
+		defer pr.Close()
+		defer pw.Close()
 
-			httpC.Transcribe(pr, out, options)
+		go func() {
+
+			bs := make([]byte, 1024)
+			for {
+				n, err := os.Stdin.Read(bs)
+				if n > 0 {
+					logger.Debug("read from stdin", "bs", bs)
+
+					_, err := pw.Write(bs)
+					if err != nil {
+						panic(err)
+					}
+				} else if err == io.EOF {
+					logger.Info("done reading from stdin")
+					break
+				} else if err != nil {
+					logger.Error("cannot not read from stdin", "err", err)
+					os.Exit(1)
+				}
+			}
 		}()
 
-		bs := make([]byte, 1024)
-		for {
-			n, err := os.Stdin.Read(bs)
-			if n > 0 {
-				logger.Debug("read from stdin", "bs", bs)
-
-				_, err := pw.Write(bs)
-				if err != nil {
-					panic(err)
-				}
-			} else if err == io.EOF {
-				logger.Info("done reading from stdin")
-				break
-			} else if err != nil {
-				logger.Error("cannot not read from stdin", "err", err)
-				os.Exit(1)
-			}
-		}
+		go httpC.Transcribe(pr, out, options)
 	}
 
 	for resp := range out {
