@@ -17,7 +17,10 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-const serviceURL = "https://www.google.com/speech-api/full-duplex/v1"
+const (
+	serviceURL = "https://www.google.com/speech-api/full-duplex/v1"
+	apiKey     = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
+)
 
 type client struct {
 	*http.Client
@@ -81,7 +84,6 @@ func (c *client) recv(out chan<- *transcription.Response, options *opts.Options)
 	logger.Info("DOWN", "rsp", rsp)
 	defer rsp.Body.Close()
 
-	// stream GET response body
 	dec := json.NewDecoder(rsp.Body)
 	for {
 		speechRecogResp := &transcription.Response{}
@@ -115,7 +117,7 @@ func getUrl(streamDirection string, options *opts.Options) string {
 	if options.ApiKey != "" {
 		values.Add("key", options.ApiKey)
 	} else {
-		panic("missing api key")
+		values.Add("key", apiKey)
 	}
 	if options.Pair != "" {
 		values.Add("pair", options.Pair)
@@ -160,7 +162,7 @@ func generatePair() string {
 	return string(bs)
 }
 
-// Transcribe sends an audio input to Google Speesch API printing to stdout its trascripts.
+// Transcribe sends an audio input to Google Speesch API receiving back its trascripts via channel.
 // Audio must be in FLAC codec/format and can be passed via any io.Reader valid implementation.
 // If audio is coming from microphone input, its sample rate must be 16000.
 // If a file, the sample rate must match the one declared in the file header.

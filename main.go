@@ -51,7 +51,7 @@ func main() {
 
 	flag.BoolVar(&verbose, "verbose", false, "verbose")
 	flag.StringVar(&filePath, "file", "", "path of audio file to trascript")
-	flag.StringVar(&apiKey, "key", "", "API key built into Chrome")
+	flag.StringVar(&apiKey, "key", "", "API key to authenticates request (default is the one built into any Chrome installation)")
 	flag.StringVar(&output, "output", "", "output format ('pb' for binary or 'json' for text)")
 	flag.StringVar(&language, "language", "null", "language of the recording transcription, use the standard codes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag")
 	flag.BoolVar(&continuous, "continuous", false, "to keep the stream open and transcoding as long as there is no silence")
