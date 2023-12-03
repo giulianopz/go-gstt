@@ -5,13 +5,13 @@ import "strconv"
 const (
 	DefaultUserAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 	DefaultSampleRate = 16000
+	DefaultOutput     = "json"
 )
 
 type Options struct {
 	Verbose    bool
 	FilePath   string
 	ApiKey     string
-	Output     string
 	Language   string
 	Continuous bool
 	Interim    bool
@@ -50,24 +50,6 @@ func FilePath(path string) Option {
 func ApiKey(key string) Option {
 	return func(o *Options) {
 		o.ApiKey = key
-	}
-}
-
-type OutFmt int
-
-const (
-	Text OutFmt = iota
-	Binary
-)
-
-// Output format
-func Output(fmt OutFmt) Option {
-	return func(o *Options) {
-		if fmt == Text {
-			o.Output = "json"
-		} else {
-			o.Output = "pb"
-		}
 	}
 }
 

@@ -18,14 +18,12 @@ import (
 )
 
 const usage = `Usage:
-    gstt [OPTION]... --key $KEY --output [pb|json]
-    gstt [OPTION]... --key $KEY --interim --continuous --output [pb|json]
+    gstt [OPTION]... --interim --continuous [--file FILE]
 
 Options:
 	--verbose
 	--file, path of audio file to trascript
 	--key, api key built into chromium
-	--output, transcriptions output format ('pb' for binary or 'json' for text)
 	--language, language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag
 	--continuous, to keep the stream open and transcoding as long as there is no silence
 	--interim, to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
@@ -39,7 +37,6 @@ var (
 	verbose    bool
 	filePath   string
 	apiKey     string
-	output     string
 	language   string
 	continuous bool
 	interim    bool
@@ -54,7 +51,6 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "verbose")
 	flag.StringVar(&filePath, "file", "", "path of audio file to trascript")
 	flag.StringVar(&apiKey, "key", "", "API key to authenticates request (default is the one built into any Chrome installation)")
-	flag.StringVar(&output, "output", "", "output format ('pb' for binary or 'json' for text)")
 	flag.StringVar(&language, "language", "null", "language of the recording transcription, use the standard codes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag")
 	flag.BoolVar(&continuous, "continuous", false, "to keep the stream open and transcoding as long as there is no silence")
 	flag.BoolVar(&interim, "interim", false, "to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio")
@@ -143,13 +139,6 @@ func fromFlags() *opts.Options {
 	}
 	if apiKey != "" {
 		options = append(options, opts.ApiKey(apiKey))
-	}
-	if output != "" {
-		if output == "json" {
-			options = append(options, opts.Output(opts.Text))
-		} else {
-			options = append(options, opts.Output(opts.Binary))
-		}
 	}
 	if language != "" {
 		options = append(options, opts.Language(language))

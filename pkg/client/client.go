@@ -122,9 +122,8 @@ func getUrl(streamDirection string, options *opts.Options) string {
 	if options.Pair != "" {
 		values.Add("pair", options.Pair)
 	}
-	if options.Output != "" {
-		values.Add("output", options.Output)
-	}
+
+	values.Add("output", opts.DefaultOutput)
 
 	if streamDirection == "up" {
 		values.Add("app", "chromium")

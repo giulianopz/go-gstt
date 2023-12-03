@@ -49,14 +49,12 @@ $ mv gstt /usr/local/bin
 # or just `go install github.com/giulianopz/go-gstt@latest`, if you don't want to rename the binary
 $ gstt -h
 Usage:
-    gstt [OPTION]... --output [pb|json]
-    gstt [OPTION]... --interim --continuous --output [pb|json]
+    gstt [OPTION]... --interim --continuous [--file FILE]
 
 Options:
         --verbose
         --file, path of audio file to trascript
         --key, API key to authenticates request (default is the one built into any Chrome installation)
-        --output, transcriptions output format ('pb' for binary or 'json' for text)
         --language, language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag
         --continuous, to keep the stream open and transcoding as long as there is no silence
         --interim, to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
@@ -65,9 +63,9 @@ Options:
         --user-agent, user-agent for spoofing
         --sample-rate, audio sampling rate
 # trascribe audio from a single FLAC file
-$ gstt --interim --continuous --output json --file $FILE
+$ gstt --interim --continuous --file $FILE
 # trascribe audio from microphone input (recorded with sox, removing silence)
-$ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gstt --interim --continuous --output json
+$ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gstt --interim --continuous
 ```
 
 ### Demo
