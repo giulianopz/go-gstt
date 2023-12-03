@@ -164,9 +164,8 @@ func generatePair() string {
 
 // Transcribe sends an audio input to Google Speesch API receiving back its trascripts via channel.
 // Audio must be in FLAC codec/format and can be passed via any io.Reader valid implementation.
-// If audio is coming from microphone input, its sample rate must be 16000.
+// If audio is coming from microphone input, the sample rate option must be defined, otherwise its default value is 16000.
 // If a file, the sample rate must match the one declared in the file header.
-// Result are received asynchronously via a channel.
 // The options control the way audio is transcribed.
 func (c *client) Transcribe(in io.Reader, out chan<- *transcription.Response, options *opts.Options) {
 

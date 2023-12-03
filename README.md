@@ -63,6 +63,7 @@ Options:
         --max-alts, how many possible transcriptions do you want
         --pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
         --user-agent, user-agent for spoofing
+        --sample-rate, audio sampling rate
 # trascribe audio from a single FLAC file
 $ gstt --interim --continuous --output json --file $FILE
 # trascribe audio from microphone input (recorded with sox, removing silence)

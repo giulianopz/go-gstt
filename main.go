@@ -32,6 +32,7 @@ Options:
 	--max-alts, how many possible transcriptions do you want
 	--pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
 	--user-agent, user-agent for spoofing
+	--sample-rate, audio sampling rate
 `
 
 var (
@@ -45,6 +46,7 @@ var (
 	maxAlts    string
 	pFilter    string
 	userAgent  string
+	sampleRate int
 )
 
 func main() {
@@ -59,6 +61,7 @@ func main() {
 	flag.StringVar(&maxAlts, "max-alts", "1", "how many possible transcriptions do you want")
 	flag.StringVar(&pFilter, "pfilter", "2", "profanity filter ('0'=off, '1'=medium, '2'=strict)")
 	flag.StringVar(&userAgent, "user-agent", opts.DefaultUserAgent, "user-agent for spoofing (default 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')")
+	flag.IntVar(&sampleRate, "sample-reate", opts.DefaultSampleRate, "audio sampling rate")
 	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
@@ -95,8 +98,6 @@ func main() {
 		go func() {
 			defer pr.Close()
 			defer pw.Close()
-
-			options.SampleRate = opts.DefaultSampleRate
 
 			httpC.Transcribe(pr, out, options)
 		}()
@@ -173,7 +174,9 @@ func fromFlags() *opts.Options {
 		}
 		options = append(options, opts.ProfanityFilter(num))
 	}
-	options = append(options, opts.UserAgent(opts.GetOrDefault(userAgent, opts.DefaultUserAgent)))
+
+	options = append(options, opts.UserAgent(userAgent))
+	options = append(options, opts.SampleRate(sampleRate))
 
 	return opts.Apply(options...)
 }
