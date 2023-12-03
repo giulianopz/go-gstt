@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/giulianopz/go-gstt/pkg/logger"
@@ -169,21 +168,13 @@ func generatePair() string {
 // The options control the way audio is transcribed.
 func (c *client) Transcribe(in io.Reader, out chan<- *transcription.Response, options *opts.Options) {
 
-	wg := sync.WaitGroup{}
-
 	options.Pair = generatePair()
 
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		c.send(in, options)
 	}()
 
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		c.recv(out, options)
 	}()
-
-	wg.Wait()
 }

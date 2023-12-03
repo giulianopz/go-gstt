@@ -72,16 +72,6 @@ func main() {
 		out     = make(chan *transcription.Response)
 	)
 
-	go func() {
-		for resp := range out {
-			for _, result := range resp.Result {
-				for _, alt := range result.Alternative {
-					fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
-				}
-			}
-		}
-	}()
-
 	if filePath != "" { // transcribe from file
 
 		f, err := goflac.ParseFile(filePath)
@@ -101,10 +91,6 @@ func main() {
 
 	} else { // transcribe from microphone input
 
-		// 1kB chunk size
-		bs := make([]byte, 1024)
-
-		// stream POST request body with a pipe
 		pr, pw := io.Pipe()
 		go func() {
 			defer pr.Close()
@@ -115,6 +101,7 @@ func main() {
 			httpC.Transcribe(pr, out, options)
 		}()
 
+		bs := make([]byte, 1024)
 		for {
 			n, err := os.Stdin.Read(bs)
 			if n > 0 {
@@ -130,6 +117,14 @@ func main() {
 			} else if err != nil {
 				logger.Error("cannot not read from stdin", "err", err)
 				os.Exit(1)
+			}
+		}
+	}
+
+	for resp := range out {
+		for _, result := range resp.Result {
+			for _, alt := range result.Alternative {
+				fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
 			}
 		}
 	}
