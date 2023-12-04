@@ -4,8 +4,6 @@ A Go client to call the Google Speech API for free.
 
 The Google Speech API (full duplex version) are meant to offer a speech recognition service via the [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API/Using_the_Web_Speech_API) on the [Google Chrome](https://source.chromium.org/chromium/chromium/src/+/main:content/browser/speech/speech_recognition_engine.cc) browser. They are different from the [Google Cloud Speech-to-Text API](https://cloud.google.com/speech-to-text/v2/docs). 
 
-The API can be called using the API key built into Chrome. To find your key, go to the [demo](https://www.google.com/intl/en/chrome/demos/speech.html) page for the Web Speech API on Chrome and capture the network traffic with the Chrome [net export](chrome://net-export/) tool. Then, inspect the logs with the [netlog viewer](https://netlog-viewer.appspot.com/#import) tool.
-
 > Disclaimer: The Google Speech API is an internal API and [totally unsupported](https://lists.w3.org/Archives/Public/public-speech-api/2013Jul/0001.html), susceptible to change or disappear at any moment in the future.
 
 ### Usage
@@ -19,24 +17,22 @@ import (
 )
 
 func main() {
+	var (
+		httpC   = client.New()
+		in      io.Reader                            // audio input
+		options *opts.Options                        // configure transcription parameters
+		out     = make(chan *transcription.Response) // receive results from channel
+	)
 
-    var (
-        httpC   = client.New()
-        out     = make(chan *transcription.Response)
-    )
+	go httpC.Transcribe(in, out, options)
 
-    go func() {
-	    for resp := range out {
-            for _, result := range resp.Result {
-                for _, alt := range result.Alternative {
-                    fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
-                }
-            }
-        }
-    }()
-
-
-    httpC.Transcribe(audio, out, options)
+	for resp := range out {
+		for _, result := range resp.Result {
+			for _, alt := range result.Alternative {
+				fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
+			}
+		}
+	}
 }
 ```
 
@@ -82,4 +78,5 @@ As far as I know, this API has been going around since a long time.
 
 [Mike Pultz](https://mikepultz.com/2011/03/accessing-google-speech-api-chrome-11/) was possibly the first one to discover it in 2011. Subsequently, [Travis Payton](http://blog.travispayton.com/wp-content/uploads/2014/03/Google-Speech-API.pdf) published a detailed report on the subject.
 
+I wrote about it on my [blog](https://giulianopz.github.io/full-duplex-http-streaming-in-go).
 
