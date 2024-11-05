@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/giulianopz/go-gstt/pkg/client"
 	"github.com/giulianopz/go-gstt/pkg/logger"
@@ -25,25 +26,27 @@ Options:
 	--file, path of audio file to trascript
 	--key, api key built into chromium
 	--language, language of the recording transcription, use the standard webcodes for your language, i.e. 'en-US' for English-US, 'ru' for Russian, etc. please, see https://en.wikipedia.org/wiki/IETF_language_tag
-	--continuous, to keep the stream open and transcoding as long as there is no silence
-	--interim, to send back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
+	--continuous, keeps the stream open and transcoding as long as there is no silence
+	--interim, sends back results before its finished, so you get a live stream of possible transcriptions as it processes the audio
 	--max-alts, how many possible transcriptions do you want
 	--pfilter, profanity filter ('0'=off, '1'=medium, '2'=strict)
 	--user-agent, user-agent for spoofing
 	--sample-rate, audio sampling rate
+	--subtitle-mode, shows the transcriptions as if they were subtitles, while playing the media file, clearing the screen at each transcription
 `
 
 var (
-	verbose    bool
-	filePath   string
-	apiKey     string
-	language   string
-	continuous bool
-	interim    bool
-	maxAlts    string
-	pFilter    string
-	userAgent  string
-	sampleRate int
+	verbose      bool
+	filePath     string
+	apiKey       string
+	language     string
+	continuous   bool
+	interim      bool
+	maxAlts      string
+	pFilter      string
+	userAgent    string
+	sampleRate   int
+	subtitleMode bool
 )
 
 func main() {
@@ -57,7 +60,8 @@ func main() {
 	flag.StringVar(&maxAlts, "max-alts", "1", "how many possible transcriptions do you want")
 	flag.StringVar(&pFilter, "pfilter", "2", "profanity filter ('0'=off, '1'=medium, '2'=strict)")
 	flag.StringVar(&userAgent, "user-agent", opts.DefaultUserAgent, "user-agent for spoofing (default 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')")
-	flag.IntVar(&sampleRate, "sample-reate", opts.DefaultSampleRate, "audio sampling rate")
+	flag.IntVar(&sampleRate, "sample-rate", opts.DefaultSampleRate, "audio sampling rate")
+	flag.BoolVar(&subtitleMode, "subtitle-mode", false, "shows the transcriptions as if they were subtitles, while playing the media file, clearing the screen at each transcription")
 	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
@@ -100,7 +104,6 @@ func main() {
 				n, err := os.Stdin.Read(bs)
 				if n > 0 {
 					logger.Debug("read from stdin", "bs", bs)
-
 					_, err := pw.Write(bs)
 					if err != nil {
 						panic(err)
@@ -120,8 +123,22 @@ func main() {
 
 	for resp := range out {
 		for _, result := range resp.Result {
+			if !result.Final {
+				continue
+			}
 			for _, alt := range result.Alternative {
-				fmt.Printf("confidence=%f, transcript=%s\n", alt.Confidence, strings.TrimSpace(alt.Transcript))
+				logger.Debug("got transcription", slog.Float64("confidence", alt.Confidence), slog.String("transcript", alt.Transcript))
+				transcript := strings.TrimSpace(alt.Transcript)
+				fmt.Printf("%s", transcript)
+				if subtitleMode {
+					// Assumimg reading speed = 238 WPM (words per minute)
+					// see https://thereadtime.com/
+					time.Sleep(time.Duration(float64(len(strings.Fields(transcript)))*0.26) * time.Second)
+					// clear the entire screen with ANSI escapes
+					fmt.Print("\x1b[H\x1b[2J\x1b[3J\n")
+				} else {
+					fmt.Println()
+				}
 			}
 		}
 	}

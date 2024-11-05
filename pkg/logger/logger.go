@@ -19,14 +19,15 @@ var (
 func init() {
 	l = slog.New(newLevelHandler(
 		slog.LevelWarn,
-		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
+		slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}),
 	))
+	slog.SetDefault(l)
 }
 
 func Level(level slog.Level) {
 	l = slog.New(newLevelHandler(
 		level,
-		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}),
+		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}),
 	))
 }
 

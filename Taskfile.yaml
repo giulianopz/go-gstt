@@ -4,6 +4,7 @@ version: '3'
 dotenv: ['.env']
 
 tasks:
+
   filecap:
     cmds:
       - go run . --interim --continuous --file {{.CLI_ARGS}}
@@ -11,6 +12,7 @@ tasks:
   livecap:
     cmds:
       - rec -c 1 --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% trim 0 100 | go run . --interim --continuous
+      
   rec:
     cmds:
       - rec --bits 16 --channels 1 --rate 16000 {{.CLI_ARGS}}.flac silence 1 0.1 1% -1 0.5 1%
