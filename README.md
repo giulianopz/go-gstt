@@ -64,6 +64,8 @@ $ gstt --interim --continuous --file $FILE
 $ rec -c 1 --encoding signed-integer --bits 16 --rate 16000 -t flac - silence 1 0.1 1% -1 0.5 1% | gstt --interim --continuous
 ```
 
+> Note: the Google Speech API seems to accept only input audio with 16k sample rate and 1 channel. If you need to mix a single stereo stream (2 channels) down to a mono stream (1 channel), please read the ffmpeg [docs](https://trac.ffmpeg.org/wiki/AudioChannelManipulation).
+
 ### Demo
 
 Live-caption speech redirecting speakers output to microphone input with PulseAudio Volume Control ([pavucontrol](https://www.kirsle.net/redirect-audio-out-to-mic-in-linux)): 
